@@ -1,8 +1,7 @@
 import { mount, signal, Text, View } from "nsh";
 import { Button } from "nsh/base";
-import fs from "fs/promises";
 import { homedir } from "os";
-import { Paths } from "tinypng-mac/native";
+import { Files, Paths } from "tinypng-mac/native";
 import { addFiles, busy, compressing, files, filter } from "./state/queue";
 import { recompress, startCompress, stopCompress, stopped } from "./state/compression";
 import { mode, preset, outputFormat } from "./state/settings";
@@ -10,12 +9,12 @@ import { mode, preset, outputFormat } from "./state/settings";
 function assert(condition: unknown, message: string) { if (!condition) throw new Error(message); }
 function equal(a: Uint8Array, b: Uint8Array) { return a.length === b.length && a.every((byte, i) => byte === b[i]); }
 async function cleanup(path: string): Promise<void> {
-  for (const entry of await fs.readdir(path, { withFileTypes: true })) {
+  for (const entry of await Files.readDir(path)) {
     const child = Paths.join(path, entry.name);
-    if (entry.isDirectory()) await cleanup(child);
-    else await fs.unlink(child);
+    if (entry.isDirectory) await cleanup(child);
+    else await Files.unlink(child);
   }
-  await fs.rmdir(path);
+  await Files.rmdir(path);
 }
 
 // 带 iCCP 的样张。内嵌而非读 tests/fixtures：nsh 的 capabilities.fs 按
@@ -29,11 +28,11 @@ async function run() {
   // CI 的 checkout 在 D 盘，仓库内路径天然越界（os.homedir() 无需授权）。
   const root = Paths.join(homedir(), ".imgsquash-test");
   const directory = Paths.join(root, `runtime-${Date.now()}`);
-  await fs.mkdir(Paths.join(directory, "compressed"), { recursive: true });
+  await Files.mkdir(Paths.join(directory, "compressed"), true);
   const input = Paths.join(directory, "icon.png");
   const original = Buffer.from(ICON_ICC_PNG, "base64");
-  await fs.writeFile(input, original);
-  await fs.writeFile(Paths.join(directory, "compressed/previous.png"), original);
+  await Files.writeFile(input, original);
+  await Files.writeFile(Paths.join(directory, "compressed/previous.png"), original);
   files.set([]);
   mode.set("smart"); preset.set("standard"); outputFormat.set("keep");
   try {
@@ -44,7 +43,7 @@ async function run() {
     assert(!busy(), "批次未释放状态");
     const first = files()[0];
     assert(first.status === "done", first.error || "首次压缩失败");
-    const firstBytes = await fs.readFile(first.outputPath!);
+    const firstBytes = await Files.readFile(first.outputPath!);
     assert(first.method === "quantizr-c3", "未使用智能模式");
     mode.set("lossless");
     // 即使上次记住 WebP，无损模式的有效输出也必须是原格式。
@@ -55,17 +54,17 @@ async function run() {
     assert(second.method === "oxipng", "未使用当前无损设置");
     assert(second.outputPath !== first.outputPath, "重压覆盖了上次输出");
     assert(second.outputPath!.endsWith(".png"), "无损模式不应转换格式");
-    assert(equal(await fs.readFile(input), original), "原图被修改");
-    assert(equal(await fs.readFile(first.outputPath!), firstBytes), "原输出被修改");
-    assert((await fs.readdir(Paths.join(directory, "compressed"))).length === 3, "重复启动或输出丢失");
-    await fs.unlink(second.outputPath!);
+    assert(equal(await Files.readFile(input), original), "原图被修改");
+    assert(equal(await Files.readFile(first.outputPath!), firstBytes), "原输出被修改");
+    assert((await Files.readDir(Paths.join(directory, "compressed"))).length === 3, "重复启动或输出丢失");
+    await Files.unlink(second.outputPath!);
     await recompress(second.path);
     assert(files()[0].status === "done", "输出删除后重压没有执行");
     assert(filter() === "all", "导入后未回到全部列表");
     const extra = [];
     for (let i = 0; i < 12; i++) {
       const path = Paths.join(directory, `extra-${i}.png`);
-      await fs.writeFile(path, original);
+      await Files.writeFile(path, original);
       extra.push(path);
     }
     await addFiles(extra);
@@ -79,7 +78,7 @@ async function run() {
     assert(stopped(), "重压没有停止");
     const remaining = files().filter(file => file.status === "idle");
     assert(remaining.length > 0, "未启动的重压任务应保持待处理");
-    for (const file of remaining) assert(await fs.exists(file.outputPath!), "未启动项的旧输出被删除");
+    for (const file of remaining) assert(await Files.exists(file.outputPath!), "未启动项的旧输出被删除");
     await startCompress();
     assert(files().every(file => file.status === "done"), "继续后仍有遗漏任务");
   } finally {

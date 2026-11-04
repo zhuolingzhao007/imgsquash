@@ -74,6 +74,22 @@ pub struct ImageInfo {
     pub height: u32,
 }
 
+/// `Files.stat` 的结果：队列导入只关心这些。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsObject)]
+pub struct FileStat {
+    pub size: u64,
+    pub is_file: bool,
+    pub is_directory: bool,
+}
+
+/// `Files.readDir` 的条目：名字加类型，对齐 `readdir({ withFileTypes: true })`。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsObject)]
+pub struct DirEntry {
+    pub name: String,
+    pub is_file: bool,
+    pub is_directory: bool,
+}
+
 /// 宏模块：`tinypng-mac/native` 下的函数，TSX 通过 `from "tinypng-mac/native"` 导入。
 #[native_module("tinypng-mac/native")]
 fn native(registry: &mut Registry) {
@@ -81,6 +97,7 @@ fn native(registry: &mut Registry) {
         .module::<Compress>()
         .module::<FilePicker>()
         .module::<Finder>()
+        .module::<Files>()
         .module::<Paths>();
 }
 
@@ -251,6 +268,109 @@ impl Finder {
     /// 在文件管理器中打开文件夹 `path`。
     pub fn open_folder(path: String) -> Result<(), String> {
         open_folder(&path)
+    }
+}
+
+/// 文件系统模块：TSX 侧唯一的文件 IO 口。
+///
+/// nsh 的 JS `fs` 受 `capabilities.fs` 沙箱约束，按授权根做前缀匹配；而这个
+/// 工具的本质就是处理用户任选位置的图片——Windows 的盘符、网络路径都是
+/// 动态的，授权根无法枚举。所以文件 IO 收敛到这里，直接走原生 `std::fs`
+/// （与压缩引擎同一权限层），UI 层代码从此不直接摸文件系统。
+#[module]
+pub struct Files;
+
+#[module]
+impl Files {
+    /// 文件或目录的元信息：大小与类型。
+    pub async fn stat(path: String) -> Result<FileStat, String> {
+        nsh_core::element::ambient::blocking(move || {
+            let meta = std::fs::metadata(&path).map_err(|error| error.to_string())?;
+            Ok(FileStat {
+                size: meta.len(),
+                is_file: meta.is_file(),
+                is_directory: meta.is_dir(),
+            })
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    /// 列目录（含类型），按名字排序，对齐 Node 的 `readdir` 语义。
+    /// 隐藏文件（`.` 开头）由上层决定去留，这里不过滤。
+    pub async fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
+        nsh_core::element::ambient::blocking(move || {
+            let mut entries = Vec::new();
+            for entry in std::fs::read_dir(&path).map_err(|error| error.to_string())? {
+                let entry = entry.map_err(|error| error.to_string())?;
+                let meta = entry.metadata().map_err(|error| error.to_string())?;
+                entries.push(DirEntry {
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    is_file: meta.is_file(),
+                    is_directory: meta.is_dir(),
+                });
+            }
+            entries.sort_by(|a, b| a.name.cmp(&b.name));
+            Ok(entries)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    /// 路径是否存在。打不开（权限、损坏的链接等）不算存在，返回 `false`：
+    /// 上层用「同步磁盘真实状态」的地方（重压前的校验）宁缺毋滥。
+    pub async fn exists(path: String) -> Result<bool, String> {
+        nsh_core::element::ambient::blocking(move || Ok(Path::new(&path).exists()))
+            .await
+            .map_err(|error| error.to_string())?
+    }
+
+    /// 建目录，`recursive` 时连同父目录。
+    pub async fn mkdir(path: String, recursive: bool) -> Result<(), String> {
+        nsh_core::element::ambient::blocking(move || {
+            let result = if recursive {
+                std::fs::create_dir_all(&path)
+            } else {
+                std::fs::create_dir(&path)
+            };
+            result.map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    /// 读整个文件。队列校验输出用，不读超大图（像素走压缩引擎的流式路径）。
+    pub async fn read_file(path: String) -> Result<Vec<u8>, String> {
+        nsh_core::element::ambient::blocking(move || std::fs::read(&path).map_err(|error| error.to_string()))
+            .await
+            .map_err(|error| error.to_string())?
+    }
+
+    /// 写整个文件（覆盖）。
+    pub async fn write_file(path: String, data: Vec<u8>) -> Result<(), String> {
+        nsh_core::element::ambient::blocking(move || {
+            std::fs::write(&path, data).map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    /// 删一个文件。
+    pub async fn unlink(path: String) -> Result<(), String> {
+        nsh_core::element::ambient::blocking(move || {
+            std::fs::remove_file(&path).map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    /// 删一个空目录。
+    pub async fn rmdir(path: String) -> Result<(), String> {
+        nsh_core::element::ambient::blocking(move || {
+            std::fs::remove_dir(&path).map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
     }
 }
 

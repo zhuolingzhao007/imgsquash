@@ -9,7 +9,7 @@ import { layout } from "../state/layout";
  */
 export function renderTopBar(props: { onOpenSettings: () => void; settingsOpen: boolean }) {
   const l = layout();
-  return <View desktop={{ windowDrag: true }} style={{ flexDirection: "row", alignItems: "center", height: Math.max(titleBar().height, 48), paddingLeft: Math.max(titleBar().left, 84), paddingRight: 20, gap: 12, borderBottomWidth: 1, borderColor: c.line, backgroundColor: "#F5F7F2" }}>
+  return <View desktop={{ windowDrag: true }} style={{ flexDirection: "row", alignItems: "center", height: Math.max(titleBar().height, 48), paddingLeft: Math.max(titleBar().left, 84), paddingRight: Math.max(titleBar().right, 20), gap: 12, borderBottomWidth: 1, borderColor: c.line, backgroundColor: "#F5F7F2" }}>
     <View style={{ flex: 1 }} />
     {!l.docked && <Button onPress={props.onOpenSettings} accessibilityLabel={props.settingsOpen ? "收起压缩设置" : "压缩设置"} tooltip="压缩设置"
       style={{ flexDirection: "row", alignItems: "center", gap: 6, height: 26, paddingHorizontal: 9, borderRadius: 7, cursor: "pointer", backgroundColor: props.settingsOpen ? "#E4EAE0" : "transparent" }}

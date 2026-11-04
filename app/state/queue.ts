@@ -1,6 +1,5 @@
 import { signal } from "nsh";
-import { Compress, FilePicker, Finder, Paths } from "tinypng-mac/native";
-import fs from "fs/promises";
+import { Compress, FilePicker, Files, Finder, Paths } from "tinypng-mac/native";
 
 export interface FileItem {
   path: string;
@@ -151,8 +150,8 @@ export async function addFiles(paths: string[]) {
         if (report) problems.push(`${name}：目前支持 PNG / JPEG`);
         return;
       }
-      const info = await fs.stat(path);
-      if (!info.isFile()) return;
+      const info = await Files.stat(path);
+      if (!info.isFile) return;
       let preview = false;
       try {
         const dimensions = await Compress.inspect(path);
@@ -164,16 +163,16 @@ export async function addFiles(paths: string[]) {
 
     const collect = async (path: string, depth: number): Promise<number> => {
       if (depth > 8) return 0;
-      const info = await fs.stat(path);
-      if (info.isFile()) {
+      const info = await Files.stat(path);
+      if (info.isFile) {
         if (!isImageName(path)) return 0;
         await addOne(path, false);
         return 1;
       }
-      if (!info.isDirectory()) return 0;
+      if (!info.isDirectory) return 0;
       let entries;
       try {
-        entries = await fs.readdir(path, { withFileTypes: true });
+        entries = await Files.readDir(path);
       } catch (error) {
         problems.push(`无法读取文件夹 ${Paths.base(path)}：${String(error)}`);
         return 0;
@@ -181,7 +180,7 @@ export async function addFiles(paths: string[]) {
       let count = 0;
       for (const entry of entries) {
         if (entry.name.startsWith(".")) continue;
-        if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue;
+        if (entry.isDirectory && SKIP_DIRS.has(entry.name)) continue;
         const child = Paths.join(path, entry.name);
         try {
           count += await collect(child, depth + 1);
@@ -195,8 +194,8 @@ export async function addFiles(paths: string[]) {
     for (const raw of resolved) {
       try {
         const path = Paths.absolute(raw);
-        const info = await fs.stat(path);
-        if (info.isDirectory()) {
+        const info = await Files.stat(path);
+        if (info.isDirectory) {
           const count = await collect(path, 0);
           if (count === 0) problems.push(`${Paths.base(path)}：没有找到 PNG / JPEG`);
         } else {
@@ -308,7 +307,7 @@ export async function syncWithDisk(): Promise<SyncResult> {
 }
 
 async function stillThere(path: string) {
-  try { return await fs.exists(path); } catch { return true; }
+  try { return await Files.exists(path); } catch { return true; }
 }
 
 export function syncMessage(result: SyncResult) {

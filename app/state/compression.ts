@@ -1,6 +1,5 @@
 import { signal } from "nsh";
-import { Compress, Paths } from "tinypng-mac/native";
-import fs from "fs/promises";
+import { Compress, Files, Paths } from "tinypng-mac/native";
 import { addSpent, busy, compressing, files, notice, preparing, syncMessage, syncWithDisk, updateFile } from "./queue";
 import type { FileItem } from "./queue";
 import { effectiveOutputFormat, mode, preset } from "./settings";
@@ -48,19 +47,19 @@ function outputName(name: string, format: string) {
 
 /**
  * 给这张图占一个输出路径。两件事：
- * - 同一批是并行跑的，`fs.exists` 只反映磁盘，反映不了「另一个任务马上要写这个名字」，
+ * - 同一批是并行跑的，`Files.exists` 只反映磁盘，反映不了「另一个任务马上要写这个名字」，
  *   所以先用内存里的 `reserved` 占位。
  * - 键统一转小写：APFS 默认不分大小写，pic.png 和 Pic.png 是同一个文件。
  */
 async function reserveOutput(file: FileItem, reserved: Set<string>, format: string) {
   const directory = Paths.join(Paths.parent(file.path), "compressed");
-  await fs.mkdir(directory, { recursive: true });
+  await Files.mkdir(directory, true);
   const wanted = outputName(file.name, format);
 
   for (let suffix = 1; ; suffix++) {
     const candidate = Paths.join(directory, candidateName(wanted, suffix));
     const key = reservationKey(candidate);
-    if (!reserved.has(key) && !(await fs.exists(candidate))) {
+    if (!reserved.has(key) && !(await Files.exists(candidate))) {
       // await 之后重新确认再同步占位：中间没有 await，别的任务插不进来。
       if (!reserved.has(key)) {
         reserved.add(key);

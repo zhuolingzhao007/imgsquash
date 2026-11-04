@@ -1,0 +1,135 @@
+name: Release
+
+# 打 tag（v*）触发：双平台打包并发布到 GitHub Releases，用户从 Releases 页直接下载。
+# 产物：
+#   - macOS：imgsquash.app → zip（Apple Silicon，macOS 14+，未签名/公证）
+#   - Windows：imgsquash.exe + imgsquash.zip
+# nsh 安装路径因平台而异（实证）：macOS 装到 ~/.nsh 并软链 ~/.local/bin/nsh，
+# Windows 装到 %LOCALAPPDATA%\nsh\bin；两个安装器都不改 CI 后续步骤的 PATH，
+# 必须写 GITHUB_PATH。
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装 nsh
+        shell: bash
+        working-directory: .
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          # install.sh 只软链到 ~/.local/bin/nsh，不改 PATH
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            app/target
+          key: macos-cargo-${{ hashFiles('app/Cargo.lock') }}
+          restore-keys: macos-cargo-
+
+      - name: 打包 .app
+        run: ./scripts/package.sh
+
+      # ditto 保留 .app 的权限与元数据，双击可开；zip -r 会丢 Xattr。
+      - name: 压缩产物
+        run: ditto -c -k --keepParent .nsh/out/imgsquash.app "imgsquash-${{ github.ref_name }}-macos.zip"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: imgsquash-macos
+          path: app/imgsquash-${{ github.ref_name }}-macos.zip
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # mozjpeg 用 nasm 编 SIMD 汇编。不装也能编过（build.rs 会降级到无 SIMD），
+      # 但装上才和真实用户的构建条件一致。
+      - name: 安装 nasm
+        working-directory: .
+        run: choco install nasm -y --no-progress
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            app/target
+          key: windows-cargo-${{ hashFiles('app/Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      - name: 安装 nsh
+        working-directory: .
+        shell: pwsh
+        run: |
+          irm https://nsh.dev/install.ps1 | iex
+          # nsh 的 Windows 安装器装到 %LOCALAPPDATA%\nsh\bin（见其安装日志），
+          # 不是开发机上的 ~/.nsh 约定；GITHUB_PATH 只对后续步骤生效。
+          "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: 打包
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/package.ps1
+
+      - name: 重命名产物
+        shell: pwsh
+        working-directory: app
+        run: Move-Item .nsh/out/imgsquash.zip "imgsquash-${{ github.ref_name }}-windows.zip"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: imgsquash-windows
+          path: app/imgsquash-${{ github.ref_name }}-windows.zip
+          if-no-files-found: error
+
+  release:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 汇集产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 发布 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "ImgSquash ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --notes "- **macOS**：Apple Silicon (arm64)，需 macOS 14+。包未签名/公证，首次打开若被 Gatekeeper 拦截，请右键 App →「打开」，或在「系统设置 → 隐私与安全性」中放行。
+          - **Windows**：解压后运行 imgsquash.exe。" \
+            dist/*

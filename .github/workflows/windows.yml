@@ -48,7 +48,9 @@ jobs:
         shell: pwsh
         run: |
           irm https://nsh.dev/install.ps1 | iex
-          "$env:USERPROFILE\.nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          # nsh 的 Windows 安装器装到 %LOCALAPPDATA%\nsh\bin（见其安装日志），
+          # 不是开发机上的 ~/.nsh 约定；GITHUB_PATH 只对后续步骤生效。
+          "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           nsh -V
 
       # 先跑这个：objc2 依赖没按 target 隔离、路径拼接写死 "/" 之类的问题，

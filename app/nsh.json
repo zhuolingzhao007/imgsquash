@@ -1,0 +1,21 @@
+{
+  "name": "imgsquash",
+  "id": "com.free.imgsquash",
+  "version": "1.0.0",
+  "build": 1,
+  "rust": ".",
+  "capabilities": {
+    "fs": {
+      "read": [
+        "${homeDir}",
+        "/private/tmp",
+        "/Volumes"
+      ],
+      "write": [
+        "${homeDir}",
+        "/private/tmp",
+        "/Volumes"
+      ]
+    }
+  }
+}

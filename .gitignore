@@ -1,0 +1,8 @@
+.DS_Store
+.workbuddy-ai/
+.nsh/
+target/
+node_modules/
+compressed_output/
+*.log
+*.tmp

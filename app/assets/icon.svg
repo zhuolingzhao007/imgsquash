@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4AA873"/>
+      <stop offset="0.52" stop-color="#2E7D50"/>
+      <stop offset="1" stop-color="#1C5A3A"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.5" cy="0.06" r="0.72">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="squircle"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+  </defs>
+  <g clip-path="url(#squircle)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#sheen)"/>
+    <rect x="286" y="322" width="452" height="380" rx="64" fill="none"
+          stroke="#fff" stroke-opacity="0.18" stroke-width="26"/>
+  </g>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M238 238 L376 376" stroke-width="78"/>
+    <path d="M300 478 L478 478 L478 300" stroke-width="78"/>
+    <path d="M786 786 L648 648" stroke-width="78"/>
+    <path d="M724 546 L546 546 L546 724" stroke-width="78"/>
+  </g>
+</svg>

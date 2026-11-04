@@ -1,0 +1,45 @@
+[package]
+name = "nsh-app-tinypng-mac"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+nsh-core = "0.3.0"
+nsh-base = "0.3.0"
+# 不开 avif：image 的 avif feature 只带编码器，解码要 avif-native（dav1d，C 依赖），
+# 没解码器就验不了质量闸门。顺带甩掉 rav1e 这个最重的编译依赖。
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# 图片级并发由应用队列负责；关闭内部 Rayon，避免批处理嵌套并行。
+oxipng = { version = "7.0", default-features = false }
+# 和 image 0.25 内部用的 png 对齐，避免同一份 crate 编两遍。
+png = "0.18"
+mozjpeg = "0.10"
+# 复用同一底层绑定，只为把解码警告升级成可恢复错误，禁止静默修补损坏 JPEG。
+mozjpeg-sys = { version = "2.2.3", default-features = false }
+tempfile = "3"
+# MIT / Apache-2.0 的安全绑定；底层 Google libwebp 是 BSD-3-Clause。
+webpx = { version = "0.4.1", default-features = false, features = ["std", "encode", "icc"] }
+tinypng-core = { path = "../core" }
+
+# 供 AutoArgs / AutoResult 在 Rust↔TSX 边界序列化
+serde = { version = "1", features = ["derive"] }
+
+# macOS 原生文件选择面板（AppKit）。objc2 只支持 Apple 平台，
+# 必须按 target 引入，否则 Windows / Linux 上连编译都过不去。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+dispatch2 = "0.3"
+objc2-app-kit = { version = "0.3", features = ["NSOpenPanel", "NSApplication", "NSPanel", "NSWindow", "NSResponder"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSURL", "NSString", "NSProcessInfo"] }
+
+# Windows 原生文件选择面板（IFileOpenDialog）。rfd 在 Windows 上只用 windows-sys，
+# 关掉默认 feature，免得把 xdg-portal / async-std 一起拉进来。
+[target.'cfg(target_os = "windows")'.dependencies]
+rfd = { version = "0.15", default-features = false }
+windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread"] }

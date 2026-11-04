@@ -1,0 +1,18 @@
+[package]
+name = "tinypng-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "图片量化、感知测量与自适应率失真选择"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Cargo metadata 仅给 license-file；已核验 1.4.3 的 LICENSE 是 MIT。
+quantizr = "=1.4.3"
+# 与图片队列只保留一层并行；小采样块不值得再启动 Rayon 任务。
+ssimulacra2 = { version = "0.5", default-features = false }
+# 和 image 0.25 内部用的 png 对齐，避免同一份 crate 编两遍。
+png = "0.18"
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

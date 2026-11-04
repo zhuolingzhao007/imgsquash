@@ -1,0 +1,72 @@
+name: Windows
+
+# 在真 Windows 上验证：Rust 的平台分支能不能编过、App 能不能起、包能不能打出来。
+# macOS 上做不到这些——Homebrew 版 Rust 没有 Windows 的 std，
+# 而 mozjpeg 要 C 交叉编译，所以必须有一台 Windows 机器（这里用 GitHub 的）。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # mozjpeg 用 nasm 编 SIMD 汇编。不装也能编过（build.rs 会降级到无 SIMD），
+      # 但装上才和真实用户的构建条件一致。
+      - name: 安装 nasm
+        working-directory: .
+        run: choco install nasm -y --no-progress
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            app/target
+          key: windows-cargo-${{ hashFiles('app/Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      - name: 安装 nsh
+        working-directory: .
+        shell: pwsh
+        run: |
+          irm https://nsh.dev/install.ps1 | iex
+          "$env:USERPROFILE\.nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          nsh -V
+
+      # 先跑这个：objc2 依赖没按 target 隔离、路径拼接写死 "/" 之类的问题，
+      # 会在这一步暴露。
+      - name: 类型检查 + cargo check
+        run: nsh check
+
+      - name: 测试
+        run: nsh test
+
+      # 走真实的打包脚本，顺带把脚本本身也验了（strip、产物定位、清单名）。
+      - name: 打包
+        working-directory: .
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./app/scripts/package.ps1
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: imgsquash-windows
+          path: app/.nsh/out/
+          if-no-files-found: error
